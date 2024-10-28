@@ -1,4 +1,6 @@
 import 'package:chat_app/widgets/user_image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
@@ -21,6 +23,7 @@ class _AuthScreenState extends State<AuthScreen> {
   var _enteredEmail = '';
   var _enteredPassword = '';
   File? _selectedImage;
+  bool _isAuthenitcating = false;
 
   void _submit() async {
     final isValid = _form.currentState!.validate();
@@ -32,6 +35,10 @@ class _AuthScreenState extends State<AuthScreen> {
     _form.currentState!.save();
 
     try {
+      setState(() {
+        _isAuthenitcating = true;
+      });
+
       if (_isLogin) {
         final userCredentials = await _firebase.signInWithEmailAndPassword(
             email: _enteredEmail, password: _enteredPassword);
@@ -42,6 +49,24 @@ class _AuthScreenState extends State<AuthScreen> {
             email: _enteredEmail, password: _enteredPassword);
 
         /// print(UserCredentials);
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('user_images')
+            .child(
+                '${userCredentials.user!.uid}.jpg'); //store user image into Firebase with file path
+
+        await storageRef.putFile(_selectedImage!); //save image into File
+
+        final imageUrl = storageRef.getDownloadURL(); // get user'image URL
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc('userCredentials.user!.uid')
+            .set({
+          'username': '',
+          'email': _enteredEmail,
+          'image_url': imageUrl,
+        }); // create documents path
       }
     } on FirebaseAuthException catch (error) {
       ScaffoldMessenger.of(context).clearSnackBars();
@@ -50,6 +75,9 @@ class _AuthScreenState extends State<AuthScreen> {
           content: Text(error.message ?? 'Authentication failed.'),
         ),
       );
+      setState(() {
+        _isAuthenitcating = false;
+      });
     }
   }
 
@@ -125,24 +153,29 @@ class _AuthScreenState extends State<AuthScreen> {
                         const SizedBox(
                           height: 12,
                         ),
-                        ElevatedButton(
-                          onPressed: _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primaryContainer,
+                        if (_isAuthenitcating)
+                          const CircularProgressIndicator(),
+                        if (!_isAuthenitcating)
+                          ElevatedButton(
+                            onPressed: _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                            ),
+                            child: Text(_isLogin ? 'Login' : 'Sign up'),
                           ),
-                          child: Text(_isLogin ? 'Login' : 'Sign up'),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _isLogin = !_isLogin;
-                            });
-                          },
-                          child: Text(_isLogin
-                              ? 'Create an account'
-                              : 'I already have an account'),
-                        ),
+                        if (!_isAuthenitcating)
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _isLogin = !_isLogin;
+                              });
+                            },
+                            child: Text(_isLogin
+                                ? 'Create an account'
+                                : 'I already have an account'),
+                          ),
                       ],
                     ),
                   ),
